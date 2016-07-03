@@ -17,11 +17,11 @@ import (
 
 	"crypto/aes"
 
-	"code.google.com/p/go.crypto/ssh/terminal"
 	"github.com/dunhamsteve/ios/backup"
 	"github.com/dunhamsteve/ios/crypto/aeswrap"
 	"github.com/dunhamsteve/ios/crypto/gcm"
 	"github.com/dunhamsteve/plist"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 // Quick and Dirty error handling - when I don't expect an error, but want to know if it happens

@@ -10,8 +10,8 @@ import (
 	"encoding/binary"
 	"log"
 
-	"code.google.com/p/go.crypto/pbkdf2"
-	"github.com/dunhamsteve/crypto/aeswrap"
+	"github.com/dunhamsteve/ios/crypto/aeswrap"
+	"golang.org/x/crypto/pbkdf2"
 )
 
 type Key struct {
