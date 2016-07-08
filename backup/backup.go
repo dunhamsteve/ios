@@ -3,9 +3,13 @@
 package backup
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/sha1"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -19,7 +23,9 @@ import (
 
 	"github.com/dunhamsteve/ios/crypto/aeswrap"
 	"github.com/dunhamsteve/ios/keybag"
+	"github.com/dunhamsteve/ios/kvarchive"
 	"github.com/dunhamsteve/plist"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var be = binary.BigEndian
@@ -112,12 +118,69 @@ type MobileBackup struct {
 	Manifest Manifest
 	Records  []Record
 	Keybag   keybag.Keybag
+
+	// Holds the salt until we key the MobileBackup object.
+	Properties map[string][]byte
+
+	BlobKey []byte
+}
+
+func (db *MobileBackup) SetPassword(pass string) error {
+	tmp := append([]byte(pass), db.Properties["salt"]...)
+	a := sha256.Sum256(tmp)
+	// Assuming Backup2 format
+	if !bytes.Equal(a[:], db.Properties["passwordHash"]) {
+		panic("Bad Password")
+	}
+	fmt.Printf("salt %v\n", db.Properties["salt"])
+	b := sha1.Sum(tmp)
+	db.BlobKey = b[:16]
+	return db.Keybag.SetPassword(pass)
+}
+
+func decrypt(key, data []byte) []byte {
+	c, err := aes.NewCipher(key)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	var iv [16]byte
+	for i := range iv {
+		iv[i] = byte(i)
+	}
+	cbc := cipher.NewCBCDecrypter(c, iv[:])
+	out := make([]byte, len(data))
+	cbc.CryptBlocks(out, data)
+
+	sz := out[len(out)-1]
+	if sz > 16 || sz < 1 {
+		log.Fatal("bad pkcs7", sz)
+	}
+	end := len(out) - int(sz)
+	for i := end; i < len(out); i++ {
+		if out[i] != sz {
+			log.Fatalln("bad pkcs7", sz)
+		}
+	}
+	// TODO PKCS7
+	return out[:end]
 }
 
 func (mb *MobileBackup) FileKey(rec Record) []byte {
+	var ok bool
+	if rec.ProtClass == 0 { // New format - read data from database
+		data := decrypt(mb.BlobKey, rec.Key)
+		tmp, _ := kvarchive.UnArchive(bytes.NewReader(data))
+		frec := tmp.(map[string]interface{})
+		if rec.Key, ok = frec["EncryptionKey"].([]byte); !ok {
+			fmt.Println("Bad record", rec.Path, frec)
+			return nil
+		}
+		rec.ProtClass = uint8(frec["ProtectionClass"].(int64))
+	}
+
 	for _, key := range mb.Keybag.Keys {
 		if key.Class == uint32(rec.ProtClass) {
-
 			if key.Key != nil {
 				x := aeswrap.Unwrap(key.Key, rec.Key[4:])
 				return x
@@ -133,12 +196,16 @@ func (mb *MobileBackup) FileKey(rec Record) []byte {
 var zeroiv = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 
 func (mb *MobileBackup) ReadFile(rec Record) ([]byte, error) {
-
 	key := mb.FileKey(rec)
 	if key == nil {
 		return nil, errors.New("No key")
 	}
-	fn := path.Join(mb.Dir, rec.HashCode())
+	hcode := rec.HashCode()
+	fn := path.Join(mb.Dir, hcode)
+	// New path format
+	if _, err := os.Stat(fn); err != nil {
+		fn = path.Join(mb.Dir, hcode[:2], hcode)
+	}
 	data, err := ioutil.ReadFile(fn)
 	if err != nil {
 		return nil, err
@@ -184,13 +251,18 @@ func (mb *MobileBackup) Domains() []string {
 // Not yet implemented
 func (mb *MobileBackup) FileReader(rec Record) (io.ReadCloser, error) {
 	rval := new(reader)
+	fmt.Println(rec.Path)
 	key := mb.FileKey(rec)
 
 	if key == nil {
 		return nil, errors.New("Can't get key for " + rec.Domain + "-" + rec.Path)
 	}
-
-	fn := path.Join(mb.Dir, rec.HashCode())
+	hcode := rec.HashCode()
+	fn := path.Join(mb.Dir, hcode)
+	// New path format
+	if _, err := os.Stat(fn); err != nil {
+		fn = path.Join(mb.Dir, hcode[:2], hcode)
+	}
 	rval.r, rval.err = os.Open(fn)
 	if rval.err != nil {
 		return nil, rval.err
@@ -337,6 +409,7 @@ func Enumerate() ([]Backup, error) {
 
 func Open(guid string) (*MobileBackup, error) {
 	var backup MobileBackup
+	backup.Properties = make(map[string][]byte)
 	home := os.Getenv("HOME")
 	backup.Dir = path.Join(home, "Library/Application Support/MobileSync/Backup", guid)
 	tmp := path.Join(backup.Dir, "Manifest.plist")
@@ -350,16 +423,86 @@ func Open(guid string) (*MobileBackup, error) {
 		return nil, err
 	}
 	backup.Keybag = keybag.Read(backup.Manifest.BackupKeyBag)
-	tmp = path.Join(backup.Dir, "Manifest.mbdb")
 
-	var dbr DBReader
-	r2, err := os.Open(tmp)
-	if err != nil {
-		return nil, err
+	// Try to read old Manifest
+	err = backup.readOldManifest()
+	if err == nil {
+		return &backup, nil
 	}
-	dbr.Reader = r2
-	defer r2.Close()
-	backup.Records = dbr.readAll()
 
-	return &backup, nil
+	// try to read new manifest
+	return &backup, backup.readNewManifest()
+}
+
+func (backup *MobileBackup) readNewManifest() error {
+	tmp := path.Join(backup.Dir, "Manifest.db")
+	db, err := sql.Open("sqlite3", tmp)
+	if err != nil {
+		return err
+	}
+
+	// Properties contains the salt and sha256(password||salt)
+	rows, err := db.Query("select key,value from properties")
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var key string
+		var value []byte
+		err = rows.Scan(&key, &value)
+		if err != nil {
+			return err
+		}
+		backup.Properties[key] = value
+	}
+
+	rows, err = db.Query("select * from files")
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id, domain, path, file *string
+		var flags int
+		var record Record
+
+		err = rows.Scan(&id, &domain, &path, &flags, &file)
+		if err != nil {
+			return err
+		}
+		if domain != nil {
+			record.Domain = *domain
+		}
+		if path != nil {
+			record.Path = *path
+			record.Length = 1 // until we can determine size
+		}
+
+		if domain == nil || path == nil {
+			fmt.Println("!!", *id, domain, path, file)
+			continue
+		}
+		if flags == 2 {
+			record.Length = 0
+		}
+		record.Key, err = base64.StdEncoding.DecodeString(*file)
+		if err != nil {
+			return err
+		}
+		backup.Records = append(backup.Records, record)
+	}
+
+	return nil
+}
+
+func (db *MobileBackup) readOldManifest() error {
+	tmp := path.Join(db.Dir, "Manifest.mbdb")
+	r2, err := os.Open(tmp)
+	if err == nil {
+		var dbr DBReader
+		dbr.Reader = r2
+		defer r2.Close()
+		db.Records = dbr.readAll()
+		return nil
+	}
+	return err
 }

@@ -60,9 +60,9 @@ func list(db *backup.MobileBackup, domain string) {
 		// just files for now
 		if rec.Length > 0 {
 			if domain == "*" {
-				fmt.Println(rec.MetaData.ProtClass, rec.Domain, rec.Path)
+				fmt.Println(rec.Domain, rec.Path)
 			} else if domain == rec.Domain {
-				fmt.Println(rec.MetaData.ProtClass, rec.Path)
+				fmt.Println(rec.Path)
 			}
 		}
 	}
@@ -160,7 +160,7 @@ func dumpKeyGroup(db *backup.MobileBackup, group []KCEntry) []interface{} {
 func dumpkeys(db *backup.MobileBackup, outfile string) {
 	var err error
 	fmt.Fprint(os.Stderr, "Backup Password: ")
-	err = db.Keybag.SetPassword(getpass())
+	err = db.SetPassword(getpass())
 	must(err)
 	for _, rec := range db.Records {
 		if rec.Domain == "KeychainDomain" && rec.Path == "keychain-backup.plist" {
@@ -199,7 +199,7 @@ func restore(db *backup.MobileBackup, domain string, dest string) {
 	// FIXME - doesn't handle unencrypted records, nor does it gracefully handle files that are ThisDeviceOnly (if any)
 	if db.Manifest.IsEncrypted {
 		fmt.Print("Backup Password: ")
-		err = db.Keybag.SetPassword(getpass())
+		err = db.SetPassword(getpass())
 		must(err)
 	}
 

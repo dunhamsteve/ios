@@ -8,6 +8,7 @@ package keybag
 import (
 	"crypto/sha1"
 	"encoding/binary"
+	"errors"
 	"log"
 
 	"github.com/dunhamsteve/ios/crypto/aeswrap"
@@ -115,6 +116,9 @@ func (kb *Keybag) SetPassword(password string) error {
 	for _, key := range kb.Keys {
 		if key.Wrap == 2 { // 3 means we need 0x835 too, 1 means only 0x835
 			key.Key = aeswrap.Unwrap(passkey, key.WrappedKey)
+			if key.Key == nil {
+				return errors.New("Bad password")
+			}
 		}
 	}
 	return nil
