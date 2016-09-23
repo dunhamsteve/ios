@@ -1,3 +1,8 @@
+Packages asn1/encoding and crypto/gcm are Copyright (c) 2009 The Go Authors, with a BSD 
+license. See the license files in those directories for details. 
+
+The rest of the code (my original code) falls under MIT license:
+
 The MIT License (MIT)
 
 Copyright (c) 2016 Steve Dunham
