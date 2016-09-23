@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/asn1"
 	"encoding/binary"
 	"encoding/json"
 	"time"
@@ -20,6 +19,7 @@ import (
 	"github.com/dunhamsteve/ios/backup"
 	"github.com/dunhamsteve/ios/crypto/aeswrap"
 	"github.com/dunhamsteve/ios/crypto/gcm"
+	"github.com/dunhamsteve/ios/encoding/asn1"
 	"github.com/dunhamsteve/plist"
 	"golang.org/x/crypto/ssh/terminal"
 )
@@ -100,7 +100,11 @@ func parseRecord(data []byte) map[string]interface{} {
 	var v EntrySET
 	rval := make(map[string]interface{})
 	_, err := asn1.Unmarshal(data, &v)
-	must(err)
+	if err != nil {
+		fmt.Println(err)
+		ioutil.WriteFile("failed.bin", data, 0644)
+	}
+	// must(err)
 	for _, entry := range v {
 		// Time values come through as nil, so we try again with a "DateEntry" structure.
 		if entry.Value == nil {
@@ -130,7 +134,7 @@ func dumpKeyGroup(db *backup.MobileBackup, group []KCEntry) []interface{} {
 			// Find key for class
 			ckey := db.Keybag.GetClassKey(class)
 			if ckey == nil {
-				fmt.Println("No key for class", class)
+				fmt.Println("No key for class", class, string(key.Ref)[:4], key.Ref[4:])
 				continue
 			}
 
@@ -220,6 +224,10 @@ func restore(db *backup.MobileBackup, domain string, dest string) {
 				err = os.MkdirAll(dir, 0755)
 				must(err)
 				r, err := db.FileReader(rec)
+				if err != nil {
+					log.Println("error reading file", rec, err)
+					continue
+				}
 				must(err)
 				w, err := os.Create(outPath)
 				must(err)
