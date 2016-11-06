@@ -7,9 +7,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/sha1"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -119,22 +117,10 @@ type MobileBackup struct {
 	Records  []Record
 	Keybag   keybag.Keybag
 
-	// Holds the salt until we key the MobileBackup object.
-	Properties map[string][]byte
-
 	BlobKey []byte
 }
 
 func (db *MobileBackup) SetPassword(pass string) error {
-	tmp := append([]byte(pass), db.Properties["salt"]...)
-	a := sha256.Sum256(tmp)
-	// Assuming Backup2 format
-	if !bytes.Equal(a[:], db.Properties["passwordHash"]) {
-		panic("Bad Password")
-	}
-	fmt.Printf("salt %v\n", db.Properties["salt"])
-	b := sha1.Sum(tmp)
-	db.BlobKey = b[:16]
 	return db.Keybag.SetPassword(pass)
 }
 
@@ -167,18 +153,6 @@ func decrypt(key, data []byte) []byte {
 }
 
 func (mb *MobileBackup) FileKey(rec Record) []byte {
-	var ok bool
-	if rec.ProtClass == 0 { // New format - read data from database
-		data := decrypt(mb.BlobKey, rec.Key)
-		tmp, _ := kvarchive.UnArchive(bytes.NewReader(data))
-		frec := tmp.(map[string]interface{})
-		if rec.Key, ok = frec["EncryptionKey"].([]byte); !ok {
-			fmt.Println("Bad record", rec.Path, frec)
-			return nil
-		}
-		rec.ProtClass = uint8(frec["ProtectionClass"].(int64))
-	}
-
 	for _, key := range mb.Keybag.Keys {
 		if key.Class == uint32(rec.ProtClass) {
 			if key.Key != nil {
@@ -409,7 +383,7 @@ func Enumerate() ([]Backup, error) {
 
 func Open(guid string) (*MobileBackup, error) {
 	var backup MobileBackup
-	backup.Properties = make(map[string][]byte)
+
 	home := os.Getenv("HOME")
 	backup.Dir = path.Join(home, "Library/Application Support/MobileSync/Backup", guid)
 	tmp := path.Join(backup.Dir, "Manifest.plist")
@@ -436,58 +410,49 @@ func Open(guid string) (*MobileBackup, error) {
 
 func (backup *MobileBackup) readNewManifest() error {
 	tmp := path.Join(backup.Dir, "Manifest.db")
+	fmt.Println(tmp)
 	db, err := sql.Open("sqlite3", tmp)
 	if err != nil {
 		return err
 	}
 
-	// Properties contains the salt and sha256(password||salt)
-	rows, err := db.Query("select key,value from properties")
+	rows, err := db.Query("select * from files")
 	if err != nil {
 		return err
 	}
 	for rows.Next() {
-		var key string
-		var value []byte
-		err = rows.Scan(&key, &value)
-		if err != nil {
-			return err
-		}
-		backup.Properties[key] = value
-	}
-
-	rows, err = db.Query("select * from files")
-	if err != nil {
-		return err
-	}
-	for rows.Next() {
-		var id, domain, path, file *string
+		var id, domain, path *string
+		var data []byte
 		var flags int
 		var record Record
 
-		err = rows.Scan(&id, &domain, &path, &flags, &file)
+		err = rows.Scan(&id, &domain, &path, &flags, &data)
 		if err != nil {
 			return err
 		}
-		if domain != nil {
-			record.Domain = *domain
-		}
-		if path != nil {
-			record.Path = *path
-			record.Length = 1 // until we can determine size
-		}
-
-		if domain == nil || path == nil {
-			fmt.Println("!!", *id, domain, path, file)
+		// Not sure if this happens anymore
+		if domain == nil {
 			continue
 		}
-		if flags == 2 {
-			record.Length = 0
-		}
-		record.Key, err = base64.StdEncoding.DecodeString(*file)
+
+		record.Domain = *domain
+
+		tmp, err := kvarchive.UnArchive(bytes.NewReader(data))
 		if err != nil {
-			return err
+			panic(err)
 		}
+		frec := tmp.(map[string]interface{})
+		// TODO - teach kvarchive to read into structures.
+		record.Key, _ = frec["EncryptionKey"].([]byte)
+		record.ProtClass = uint8(frec["ProtectionClass"].(int64))
+		record.Length = uint64(frec["Size"].(int64))
+		record.Mode = uint16(frec["Mode"].(int64))
+		record.Gid = uint32(frec["GroupID"].(int64))
+		record.Uid = uint32(frec["UserID"].(int64))
+		record.Ctime = uint32(frec["Birth"].(int64))
+		record.Atime = uint32(frec["LastModified"].(int64))
+		record.Path = frec["RelativePath"].(string)
+
 		backup.Records = append(backup.Records, record)
 	}
 

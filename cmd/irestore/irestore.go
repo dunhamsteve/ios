@@ -50,7 +50,7 @@ func domains(db *backup.MobileBackup) {
 	}
 }
 func apps(db *backup.MobileBackup) {
-	for app, _ := range db.Manifest.Applications {
+	for app := range db.Manifest.Applications {
 		fmt.Println(app)
 	}
 }

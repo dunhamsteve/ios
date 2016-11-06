@@ -36,7 +36,7 @@ The `apps` command will list the installed apps.
 _**Note:** The format of the backup database has recently changed (possibly just in MacOS 10.12) to be a sqlite database.  I'm checking this into github before porting to the new format._ 
 
 
-## iOS 10
+## iOS 10 (deprecated)
 
 iOS 10 is using a different format for the manifest. It stores the data in a sqlite3 database called `Manifest.db`, which contains two tables. And the actual files themselves are moved to subdirectories whose names are the first two characters of the filename.
 
@@ -52,6 +52,11 @@ The `Files` table contains a row for each file. The columns are `fileID`, `domai
 The `file` field is an encrypted with AES128-CBC.  The key is the first 16 bytes of `sha1(password||salt)`, the initialization vector is the sequence of bytes `0, 1, 2, ... 15`. 
 
 The decrypted data is a binary plist, specifically a key-valued archive of a `MBFile` object.  This object has a `ProtectionClass` field that gives the files protection class (used for choosing an appropriate key from the keybag) and an `EncryptionKey` field containing an `NSMutableData` with the same format as the encryption key in the MBDB file. (A little endian uint32 containing the protection class, followed by the file's key AES-WRAPed by the key for that protection class.)
+
+## iOS 10.1
+
+The properties table described above is now empty, and the "file" column is a bare plist. To keep the code simple, I no longer support the iOS 10 
+backup format.
 
 
 
