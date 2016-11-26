@@ -1,5 +1,4 @@
-// The backup package wraps an iOS backup directory.  This will need updating to handle the directories from
-// macOS sierra.
+// Package backup wraps an iOS backup directory.
 package backup
 
 import (
@@ -96,7 +95,7 @@ func (r *DBReader) readAll() []Record {
 	var rval []Record
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Println("Recovered in f", r)
+			fmt.Println("Recovered in readAll", r)
 		}
 	}()
 	var header [6]byte
@@ -111,6 +110,7 @@ func (r *DBReader) readAll() []Record {
 	return rval
 }
 
+// MobileBackup encapsulates a mobile backup manifest
 type MobileBackup struct {
 	Dir      string
 	Manifest Manifest
@@ -120,8 +120,9 @@ type MobileBackup struct {
 	BlobKey []byte
 }
 
-func (db *MobileBackup) SetPassword(pass string) error {
-	return db.Keybag.SetPassword(pass)
+// SetPassword decrypts the keychain.
+func (mb *MobileBackup) SetPassword(pass string) error {
+	return mb.Keybag.SetPassword(pass)
 }
 
 func decrypt(key, data []byte) []byte {
@@ -152,27 +153,24 @@ func decrypt(key, data []byte) []byte {
 	return out[:end]
 }
 
+// FileKey finds the key for a given file record
 func (mb *MobileBackup) FileKey(rec Record) []byte {
-	for _, key := range mb.Keybag.Keys {
-		if key.Class == uint32(rec.ProtClass) {
-			if key.Key != nil {
-				x := aeswrap.Unwrap(key.Key, rec.Key[4:])
-				return x
-			} else {
-				log.Println("Locked key for protection class", rec.ProtClass)
-				return nil
-			}
-		}
+	key := mb.Keybag.GetClassKey(uint32(rec.ProtClass))
+	if key != nil {
+		return aeswrap.Unwrap(key, rec.Key[4:])
 	}
+	log.Println("No key for protection class", rec.ProtClass)
+
 	return nil
 }
 
 var zeroiv = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 
+// ReadFile reads the contents of an encrypted file.
 func (mb *MobileBackup) ReadFile(rec Record) ([]byte, error) {
 	key := mb.FileKey(rec)
 	if key == nil {
-		return nil, errors.New("No key")
+		return nil, fmt.Errorf("No key for file %v", rec)
 	}
 	hcode := rec.HashCode()
 	fn := path.Join(mb.Dir, hcode)
@@ -192,9 +190,9 @@ func (mb *MobileBackup) ReadFile(rec Record) ([]byte, error) {
 	bm.CryptBlocks(data, data)
 
 	return unpad(data), nil
-
 }
 
+// unpad removes pkcs7 padding, returns nil if invalid.
 func unpad(data []byte) []byte {
 	l := len(data)
 	c := data[l-1]
@@ -209,23 +207,23 @@ func unpad(data []byte) []byte {
 	return data[:l-int(c)]
 }
 
+// Domains lists the file domains in a backup manifest.
 func (mb *MobileBackup) Domains() []string {
 	domains := make(map[string]bool)
 	for _, rec := range mb.Records {
 		domains[rec.Domain] = true
 	}
 	rval := make([]string, 0, len(domains))
-	for k, _ := range domains {
+	for k := range domains {
 		rval = append(rval, k)
 	}
 	sort.Strings(rval)
 	return rval
 }
 
-// Not yet implemented
+// FileReader returns an io.Reader for the unencrypted contents of a file record
 func (mb *MobileBackup) FileReader(rec Record) (io.ReadCloser, error) {
 	rval := new(reader)
-	fmt.Println(rec.Path)
 	key := mb.FileKey(rec)
 
 	if key == nil {
@@ -281,10 +279,10 @@ func (mb *MobileBackup) FileReader(rec Record) (io.ReadCloser, error) {
 				rval.ch <- buf
 				rval.ch <- nil
 				return
-			} else {
-				rval.ch <- buf[:n]
-				copy(prev, buf[n:])
 			}
+			rval.ch <- buf[:n]
+			copy(prev, buf[n:])
+
 			if rval.err != nil {
 				fmt.Println(" other error", rval.err)
 				rval.ch <- nil
@@ -345,6 +343,7 @@ type Manifest struct {
 	}
 	Applications map[string]map[string]interface{}
 	IsEncrypted  bool
+	ManifestKey  []byte // this is wrapped
 }
 
 type Backup struct {
@@ -352,6 +351,7 @@ type Backup struct {
 	FileName   string
 }
 
+// Enumerate lists the available backups
 func Enumerate() ([]Backup, error) {
 	var all []Backup
 	home := os.Getenv("HOME")
@@ -381,6 +381,7 @@ func Enumerate() ([]Backup, error) {
 	return all, nil
 }
 
+// Open opens a MobileBackup directory corresponding to a given guid.
 func Open(guid string) (*MobileBackup, error) {
 	var backup MobileBackup
 
@@ -397,25 +398,69 @@ func Open(guid string) (*MobileBackup, error) {
 		return nil, err
 	}
 	backup.Keybag = keybag.Read(backup.Manifest.BackupKeyBag)
+	return &backup, nil
+}
 
+// Load loads the backup. It must be called after "SetPassword" for
+// ios 10.2+ encrypted backups, and must be called before attempting
+// to use any other methods on MobileBackup.
+func (mb *MobileBackup) Load() error {
 	// Try to read old Manifest
-	err = backup.readOldManifest()
+	err := mb.readOldManifest()
 	if err == nil {
-		return &backup, nil
+		return nil
 	}
 
 	// try to read new manifest
-	return &backup, backup.readNewManifest()
+	return mb.readNewManifest()
 }
 
-func (backup *MobileBackup) readNewManifest() error {
-	tmp := path.Join(backup.Dir, "Manifest.db")
-	fmt.Println(tmp)
+func (mb *MobileBackup) decryptDatabase(fn string, mk []byte) (string, error) {
+	var err error
+	class := binary.LittleEndian.Uint32(mk)
+	ckey := mb.Keybag.GetClassKey(class)
+	if ckey == nil {
+		return "", fmt.Errorf("No manifest key for class %d", class)
+	}
+	key := aeswrap.Unwrap(ckey, mk[4:])
+	fmt.Println("Got manifest key", key)
+	data, err := ioutil.ReadFile(fn)
+	if err != nil {
+		return "", err
+	}
+	b, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	bm := cipher.NewCBCDecrypter(b, zeroiv)
+	bm.CryptBlocks(data, data)
+	out, err := ioutil.TempFile("/tmp", "db")
+	if err != nil {
+		return "", err
+	}
+	out.Write(data)
+	out.Close()
+	return out.Name(), nil
+}
+
+func (mb *MobileBackup) readNewManifest() error {
+	var err error
+	fmt.Println("load")
+	tmp := path.Join(mb.Dir, "Manifest.db")
+	mk := mb.Manifest.ManifestKey
+
+	if mk != nil {
+		tmp, err = mb.decryptDatabase(tmp, mk)
+		if err != nil {
+			return err
+		}
+		defer os.Remove(tmp)
+	}
+
 	db, err := sql.Open("sqlite3", tmp)
 	if err != nil {
 		return err
 	}
-
 	rows, err := db.Query("select * from files")
 	if err != nil {
 		return err
@@ -453,20 +498,20 @@ func (backup *MobileBackup) readNewManifest() error {
 		record.Atime = uint32(frec["LastModified"].(int64))
 		record.Path = frec["RelativePath"].(string)
 
-		backup.Records = append(backup.Records, record)
+		mb.Records = append(mb.Records, record)
 	}
 
 	return nil
 }
 
-func (db *MobileBackup) readOldManifest() error {
-	tmp := path.Join(db.Dir, "Manifest.mbdb")
+func (mb *MobileBackup) readOldManifest() error {
+	tmp := path.Join(mb.Dir, "Manifest.mbdb")
 	r2, err := os.Open(tmp)
 	if err == nil {
 		var dbr DBReader
 		dbr.Reader = r2
 		defer r2.Close()
-		db.Records = dbr.readAll()
+		mb.Records = dbr.readAll()
 		return nil
 	}
 	return err

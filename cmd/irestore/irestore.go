@@ -31,16 +31,17 @@ func must(err error) {
 	}
 }
 
-func DumpJson(x interface{}) {
+func dumpJSON(x interface{}) {
 	json, err := json.MarshalIndent(x, "", "  ")
 	must(err)
 	fmt.Println(string(json))
 }
 
 func getpass() string {
+	fmt.Fprint(os.Stderr, "Backup Password: ")
 	pw, err := terminal.ReadPassword(0)
 	must(err)
-
+	fmt.Println()
 	return string(pw)
 }
 
@@ -139,7 +140,10 @@ func dumpKeyGroup(db *backup.MobileBackup, group []KCEntry) []interface{} {
 			}
 
 			key := aeswrap.Unwrap(ckey, wkey)
-
+			if key == nil {
+				fmt.Println("unwrap failed for class", class)
+				continue
+			}
 			// Create a gcm cipher
 			c, err := aes.NewCipher(key)
 			if err != nil {
@@ -162,10 +166,6 @@ func dumpKeyGroup(db *backup.MobileBackup, group []KCEntry) []interface{} {
 }
 
 func dumpkeys(db *backup.MobileBackup, outfile string) {
-	var err error
-	fmt.Fprint(os.Stderr, "Backup Password: ")
-	err = db.SetPassword(getpass())
-	must(err)
 	for _, rec := range db.Records {
 		if rec.Domain == "KeychainDomain" && rec.Path == "keychain-backup.plist" {
 			fmt.Println(rec)
@@ -177,7 +177,6 @@ func dumpkeys(db *backup.MobileBackup, outfile string) {
 			var v Keychain
 			err = plist.Unmarshal(bytes.NewReader(data), &v)
 			must(err)
-			// fmt.Println(v)
 
 			dump := make(map[string][]interface{})
 			dump["General"] = dumpKeyGroup(db, v.General)
@@ -199,14 +198,6 @@ func dumpkeys(db *backup.MobileBackup, outfile string) {
 
 func restore(db *backup.MobileBackup, domain string, dest string) {
 	var err error
-
-	// FIXME - doesn't handle unencrypted records, nor does it gracefully handle files that are ThisDeviceOnly (if any)
-	if db.Manifest.IsEncrypted {
-		fmt.Print("Backup Password: ")
-		err = db.SetPassword(getpass())
-		must(err)
-	}
-
 	var total int64
 	for _, rec := range db.Records {
 		if rec.Length > 0 {
@@ -278,9 +269,15 @@ func main() {
 		return
 	}
 	fmt.Println("Selected", selected.DeviceName, selected.FileName)
+
 	db, err := backup.Open(selected.FileName)
 	must(err)
 
+	if db.Manifest.IsEncrypted {
+		err = db.SetPassword(getpass())
+		must(err)
+	}
+	must(db.Load())
 	if len(os.Args) < 2 {
 		for _, domain := range db.Domains() {
 			fmt.Println(domain)
@@ -325,9 +322,4 @@ func main() {
 	default:
 		help()
 	}
-
-	if true {
-		return
-	}
-
 }

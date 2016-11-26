@@ -7,9 +7,15 @@ package keybag
 
 import (
 	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"log"
+
+	"encoding/hex"
+
+	"time"
 
 	"github.com/dunhamsteve/ios/crypto/aeswrap"
 	"golang.org/x/crypto/pbkdf2"
@@ -28,12 +34,14 @@ type Keybag struct {
 	Version uint32
 	Type    uint32
 
-	UUID []byte
-	HMAC []byte
-	Wrap uint32
-	Salt []byte
-	Iter uint32
-	Keys []*Key
+	UUID    []byte
+	HMAC    []byte
+	Wrap    uint32
+	Salt    []byte
+	Iter    uint32
+	AuxSalt []byte
+	AuxIter uint32
+	Keys    []*Key
 }
 
 var be = binary.BigEndian
@@ -54,6 +62,7 @@ func Read(data []byte) Keybag {
 			ivalue = be.Uint32(value[:4])
 		}
 
+		// UUID appears once in the top matter, then once per entry thereafter.
 		if state < 2 {
 			switch fourcc {
 			case "VERS":
@@ -68,16 +77,22 @@ func Read(data []byte) Keybag {
 				kb.Salt = value
 			case "ITER":
 				kb.Iter = ivalue
+			case "DPWT":
+				// not sure what this one is
+			case "DPIC":
+				kb.AuxIter = ivalue
+			case "DPSL":
+				kb.AuxSalt = value
 			case "UUID":
 				state++
 				if state == 2 {
+					// Rewind position to let the UUID show up again
 					pos -= 8 + size
-
 				} else {
 					kb.UUID = value
 				}
 			default:
-				log.Fatal("fourcc", fourcc, "not handled")
+				log.Fatalln("fourcc", fourcc, "not handled", len(value), hex.EncodeToString(value))
 			}
 		} else {
 			switch fourcc {
@@ -111,8 +126,20 @@ func (kb *Keybag) GetClassKey(class uint32) []byte {
 	return nil
 }
 
+// SetPassword decrypts the keybag, recovering some of the keys.
 func (kb *Keybag) SetPassword(password string) error {
-	passkey := pbkdf2.Key([]byte(password), kb.Salt, int(kb.Iter), 32, sha1.New)
+	var passkey = []byte(password)
+	if len(password) == 64 {
+		passkey, _ = hex.DecodeString(password)
+	} else {
+		start := time.Now()
+		if kb.AuxIter > 0 {
+			passkey = pbkdf2.Key(passkey, kb.AuxSalt, int(kb.AuxIter), 32, sha256.New)
+		}
+		passkey = pbkdf2.Key(passkey, kb.Salt, int(kb.Iter), 32, sha1.New)
+		fmt.Println("key derivation took", time.Now().Sub(start), "use the password", hex.EncodeToString(passkey), "to skip")
+	}
+
 	for _, key := range kb.Keys {
 		if key.Wrap == 2 { // 3 means we need 0x835 too, 1 means only 0x835
 			key.Key = aeswrap.Unwrap(passkey, key.WrappedKey)

@@ -1,7 +1,6 @@
-# Go iOS Utilities
+# iOS Backup Extraction
 
-This repository contains `irestore`, a program for inspecting and pulling files and the keychain out of an encrypted iOS backup
-tree. It is written in Go and based on work done in the `iphone-dataprotection` project found on google code. 
+This repository contains `irestore`, a program for inspecting and pulling files and the keychain out of an encrypted iOS backup tree. It is written in Go and based on work done in the `iphone-dataprotection` project found on google code. 
 
 If you are using an encrypted backup, it also can read parts of the keychain and dump it as json. 
 
@@ -33,8 +32,7 @@ The `dumpkeys` command will dump the readable portions of the keychain to json.
 
 The `apps` command will list the installed apps.
 
-_**Note:** The format of the backup database has recently changed (possibly just in MacOS 10.12) to be a sqlite database.  I'm checking this into github before porting to the new format._ 
-
+_Changes to the database format in recent iOS releases:_
 
 ## iOS 10 (deprecated)
 
@@ -49,15 +47,20 @@ The key `passwordHash` contains `sha256(password||salt)`.
 
 The `Files` table contains a row for each file. The columns are `fileID`, `domain`, `relativePath`, `flags`, and `file`.  The `fileID` is the hash of `domain + "-" + relativePath`. 
 
-The `file` field is an encrypted with AES128-CBC.  The key is the first 16 bytes of `sha1(password||salt)`, the initialization vector is the sequence of bytes `0, 1, 2, ... 15`. 
+The `file` field is an encrypted with AES128-CBC.  The key is the first 16 bytes of `sha1(password||salt)`, the initialization vector is the sequence of bytes `0, 1, 2, ..., 15`. 
 
 The decrypted data is a binary plist, specifically a key-valued archive of a `MBFile` object.  This object has a `ProtectionClass` field that gives the files protection class (used for choosing an appropriate key from the keybag) and an `EncryptionKey` field containing an `NSMutableData` with the same format as the encryption key in the MBDB file. (A little endian uint32 containing the protection class, followed by the file's key AES-WRAPed by the key for that protection class.)
 
 ## iOS 10.1
 
-The properties table described above is now empty, and the "file" column is a bare plist. To keep the code simple, I no longer support the iOS 10 
+The properties table described above is now empty, and the "file" column is a bare plist. To keep the code simple, I no longer support the iOS 10.0 
 backup format.
 
 
+## iOS 10.2
 
+There are a few changes in iOS 10.2.  The Manifest database itself is encrypted, its key is stored, wrapped with protection class 4, in the `ManifestKey` property `Manifest.plist`. This necessitates asking for the password before listing files.
 
+Further, the keybag has a second round of PBKDF2 with different parameters and a sha256 hash function. This one takes about 10 seconds in Go, so the code now prints the decrypted key in hex. If you provide this hex key instead of your password, you can skip the long key derivation step.
+
+(iOS 10.2 details came from a github thread.)
