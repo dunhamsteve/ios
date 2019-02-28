@@ -15,10 +15,10 @@ import (
 	"strings"
 
 	"crypto/aes"
+	"crypto/cipher"
 
 	"github.com/dunhamsteve/ios/backup"
 	"github.com/dunhamsteve/ios/crypto/aeswrap"
-	"github.com/dunhamsteve/ios/crypto/gcm"
 	"github.com/dunhamsteve/ios/encoding/asn1"
 	"github.com/dunhamsteve/plist"
 	"golang.org/x/crypto/ssh/terminal"
@@ -149,7 +149,7 @@ func dumpKeyGroup(db *backup.MobileBackup, group []KCEntry) []interface{} {
 			if err != nil {
 				log.Panic(err)
 			}
-			gcm, err := gcm.NewGCM(c)
+			gcm, err := cipher.NewGCMWithNonceSize(c, 0)
 			if err != nil {
 				log.Panic(err)
 			}
