@@ -20,6 +20,7 @@ Selected MyPad 43686f636f6c61746552616d656b696e73546f6f
 Usage:
     ls [domain]
     restore domain dest
+    restore-all dest
     dumpkeys [outputfile]
     apps
 ```
@@ -27,6 +28,8 @@ Usage:
 The `ls` command will list domains or files in a domain.
 
 The `restore` command will restore the files in a domain into a directory tree.
+
+The `restore-all` command will restore the all files into a directory tree.
 
 The `dumpkeys` command will dump the readable portions of the keychain to json.
 

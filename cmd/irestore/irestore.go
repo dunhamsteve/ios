@@ -289,6 +289,7 @@ func main() {
 		fmt.Println(`Usage:
     ls [domain]
     restore domain dest
+    restore-all dest
     dumpkeys [outputfile]
     apps
 `)
@@ -308,6 +309,15 @@ func main() {
 	case "restore":
 		if len(os.Args) > 4 {
 			restore(db, os.Args[3], os.Args[4])
+		} else {
+			help()
+		}
+	case "restore-all":
+		if len(os.Args) > 3 {
+			for _, domain := range db.Domains() {
+				outPath := path.Join(os.Args[3] + domain)
+				restore(db, domain, outPath)
+			}
 		} else {
 			help()
 		}
