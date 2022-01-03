@@ -370,6 +370,14 @@ func marshalTimeCommon(out *forkableWriter, t time.Time) (err error) {
 		return
 	}
 
+	if t.Nanosecond() > 0 {
+		out.WriteByte('.')
+		date := fmt.Sprintf("%s", t)
+		for _, digit := range date[20:len(date)-10] {
+			out.WriteByte(byte(digit))
+		}
+	}
+
 	_, offset := t.Zone()
 
 	switch {
