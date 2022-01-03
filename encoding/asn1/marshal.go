@@ -624,6 +624,11 @@ func marshalField(out *forkableWriter, v reflect.Value, params fieldParameters) 
 		class = ClassContextSpecific
 	}
 
+	// Replace TagPrintableString with TagUTF8String tags for idempotency
+	if (tag == 19) {
+		tag = 12
+	}
+
 	err = marshalTagAndLength(tags, tagAndLength{class, tag, bodyLen, isCompound})
 	if err != nil {
 		return
