@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"time"
+	"reflect"
 
 	"bytes"
 	"fmt"
@@ -106,6 +107,8 @@ func parseRecord(data []byte) map[string]interface{} {
 		ioutil.WriteFile("failed.bin", data, 0644)
 	}
 	// must(err)
+	keys := make([]string, 0, len(v))
+	types := make([]string, 0, len(v))
 	for _, entry := range v {
 		// Time values come through as nil, so we try again with a "DateEntry" structure.
 		if entry.Value == nil {
@@ -117,7 +120,12 @@ func parseRecord(data []byte) map[string]interface{} {
 		}
 
 		rval[entry.Key] = entry.Value
+		keys = append(keys, entry.Key)
+		types = append(types, reflect.TypeOf(entry.Value).String())
 	}
+
+	rval["_fieldOrder"] = strings.Join(keys, ",")
+	rval["_fieldTypes"] = strings.Join(types, ",")
 	return rval
 }
 
@@ -155,7 +163,14 @@ func dumpKeyGroup(db *backup.MobileBackup, group []KCEntry) []interface{} {
 			}
 			plain, err := gcm.Open(nil, nil, edata, nil)
 			must(err)
+
 			record := parseRecord(plain)
+			record["_class"] = class
+			record["_version"] = version
+			record["_wkey"] = wkey
+			record["_length"] = l
+			record["_ref"] = key.Ref
+
 			rval = append(rval, record)
 		default:
 			panic(fmt.Sprintf("Unhandled keychain blob version %d", version))
