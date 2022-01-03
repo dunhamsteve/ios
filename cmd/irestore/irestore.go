@@ -139,13 +139,13 @@ func dumpKeyGroup(db *backup.MobileBackup, group []KCEntry) []interface{} {
 				continue
 			}
 
-			key := aeswrap.Unwrap(ckey, wkey)
-			if key == nil {
+			aesKey := aeswrap.Unwrap(ckey, wkey)
+			if aesKey == nil {
 				fmt.Println("unwrap failed for class", class)
 				continue
 			}
 			// Create a gcm cipher
-			c, err := aes.NewCipher(key)
+			c, err := aes.NewCipher(aesKey)
 			if err != nil {
 				log.Panic(err)
 			}
