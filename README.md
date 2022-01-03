@@ -21,6 +21,7 @@ Usage:
     ls [domain]
     restore domain dest
     dumpkeys [outputfile]
+    encryptkeys [inputfile] [outputfile]
     apps
 ```
 
@@ -29,6 +30,8 @@ The `ls` command will list domains or files in a domain.
 The `restore` command will restore the files in a domain into a directory tree.
 
 The `dumpkeys` command will dump the readable portions of the keychain to json.
+
+The `encryptkeys` command will encrypt the dumped portions of the keychain back to a property list.
 
 The `apps` command will list the installed apps.
 
