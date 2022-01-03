@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"encoding/json"
+	"encoding/base64"
 	"time"
 	"reflect"
 
@@ -211,6 +212,125 @@ func dumpkeys(db *backup.MobileBackup, outfile string) {
 	}
 }
 
+func unparseRecord(record map[string]interface{}) []byte {
+	var v EntrySET
+
+	keys := strings.Split(fmt.Sprint(record["_fieldOrder"]), ",")
+	types := strings.Split(fmt.Sprint(record["_fieldTypes"]), ",")
+
+	for index, key := range keys {
+		if (strings.HasPrefix(key, "_")) {
+			continue
+		}
+
+		var entry Entry
+		entry.Key = key
+
+		switch types[index] {
+		case "int64":
+			entry.Value = int(record[key].(float64))
+		case "string":
+			entry.Value = record[key].(string)
+		case "time.Time":
+			const formatStr = "2006-01-02T15:04:05.999999999Z"
+			t, _ := time.Parse(formatStr, record[key].(string))
+			entry.Value = t
+		default:
+			value, _ := base64.StdEncoding.DecodeString(record[key].(string))
+			entry.Value = value
+		}
+
+		v = append(v, entry)
+	}
+
+	entries, err := asn1.Marshal(v)
+	if err != nil {
+		fmt.Println("Error marshaling record:", err)
+	}
+
+	return entries
+}
+
+func encryptKeyGroup(db *backup.MobileBackup, group interface {}, class string) []KCEntry {
+	var rval []KCEntry
+
+	if (group == nil) {
+		return rval
+	}
+
+	for _, record := range group.([]interface{}) {
+		var entry KCEntry
+
+		recordObject := record.(map[string]interface{})
+
+		ckey := db.Keybag.GetClassKey(uint32(recordObject["_class"].(float64)))
+		wkey, _ := base64.StdEncoding.DecodeString(recordObject["_wkey"].(string))
+		key := aeswrap.Unwrap(ckey, wkey)
+
+		c, err := aes.NewCipher(key)
+		must(err)
+	
+		gcm, err := gcm.NewGCM(c)
+		must(err)
+	
+		unparsed := unparseRecord(recordObject)
+
+		nonce := []byte{}
+		ciphertext := gcm.Seal(nil, nonce, unparsed, nil)
+
+		data := make([]byte, 12)
+		le.PutUint32(data, uint32(recordObject["_version"].(float64)))
+		le.PutUint32(data[4:], uint32(recordObject["_class"].(float64)))
+		le.PutUint32(data[8:], uint32(recordObject["_length"].(float64)))
+		data = append(data, wkey...)
+		data = append(data, ciphertext...)
+
+		entry.Data = data
+		ref, _ := base64.StdEncoding.DecodeString(recordObject["_ref"].(string))
+		entry.Ref = ref
+		
+		rval = append(rval, entry)
+	}
+
+	return rval
+}
+
+func encryptkeys(db *backup.MobileBackup, keys string, outfile string) {
+	jsonFile, err := os.Open(keys)
+	must(err)
+
+	defer jsonFile.Close()
+
+	jsonBytes, _ := ioutil.ReadAll(jsonFile)
+	jsonMap := make(map[string](interface{}))
+	json.Unmarshal([]byte(jsonBytes), &jsonMap)
+
+	path := os.ExpandEnv(outfile)
+	plistFile, err := os.Create(path)
+	must(err)
+
+	defer plistFile.Close()
+
+	emptyPlist := []byte{98, 112, 108, 105, 115, 116, 48, 48, 208, 8, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9}
+	_, err = plistFile.Write(emptyPlist)
+	must(err)
+
+	var v Keychain
+	err = plist.Unmarshal(plistFile, v)
+	must(err)
+
+	v.General = encryptKeyGroup(db, jsonMap["General"], "genp")
+	v.Internet = encryptKeyGroup(db, jsonMap["Internet"], "inet")
+	v.Certs = encryptKeyGroup(db, jsonMap["Certs"], "cert")
+	v.Keys = encryptKeyGroup(db, jsonMap["Keys"], "keys")
+
+	out, err := plist.Marshal(v)
+	must(err)
+
+	err = ioutil.WriteFile(path, out, 0644)
+	must(err)
+}
+
 func restore(db *backup.MobileBackup, domain string, dest string) {
 	var err error
 	var total int64
@@ -334,6 +454,10 @@ func main() {
 			out = os.Args[3]
 		}
 		dumpkeys(db, out)
+	case "encryptkeys":
+		if len(os.Args) > 4 {
+			encryptkeys(db, os.Args[3], os.Args[4])
+		}
 	default:
 		help()
 	}
