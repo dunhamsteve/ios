@@ -425,6 +425,7 @@ func main() {
     ls [domain]
     restore domain dest
     dumpkeys [outputfile]
+    encryptkeys [inputfile] [outputfile]
     apps
 `)
 	}
