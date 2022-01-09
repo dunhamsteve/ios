@@ -426,8 +426,7 @@ func main() {
     restore domain dest
     dumpkeys [outputfile]
     encryptkeys [inputfile] [outputfile]
-    apps
-`)
+    apps`)
 	}
 
 	var cmd string
