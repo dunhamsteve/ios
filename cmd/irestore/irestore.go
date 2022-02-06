@@ -238,8 +238,19 @@ func main() {
 	must(err)
 
 	var selected *backup.Backup
+	var lenArgsVirt int = len(os.Args)
+	var cred string = ""
 
-	if len(os.Args) > 1 {
+	if strings.Contains(os.Args[lenArgsVirt-1], ".cred") {
+		credBytes, err := ioutil.ReadFile(os.Args[lenArgsVirt-1])
+		if err != nil {
+			log.Fatal(err)
+		}
+		cred = strings.TrimSuffix(string(credBytes), "\n")
+		lenArgsVirt = lenArgsVirt-1
+	}
+
+	if lenArgsVirt > 1 {
 		key := os.Args[1]
 		for _, man := range mm {
 			dashed := strings.Contains(man.FileName, "-")
@@ -274,11 +285,14 @@ func main() {
 	must(err)
 
 	if db.Manifest.IsEncrypted {
-		err = db.SetPassword(getpass())
+		if cred == "" {
+			cred = getpass()
+		}
+		err = db.SetPassword(cred)
 		must(err)
 	}
 	must(db.Load())
-	if len(os.Args) < 2 {
+	if lenArgsVirt < 2 {
 		for _, domain := range db.Domains() {
 			fmt.Println(domain)
 		}
@@ -295,18 +309,18 @@ func main() {
 	}
 
 	var cmd string
-	if len(os.Args) > 2 {
+	if lenArgsVirt > 2 {
 		cmd = os.Args[2]
 	}
 	switch cmd {
 	case "ls", "list":
-		if len(os.Args) > 3 {
+		if lenArgsVirt > 3 {
 			list(db, os.Args[3])
 		} else {
 			domains(db)
 		}
 	case "restore":
-		if len(os.Args) > 4 {
+		if lenArgsVirt > 4 {
 			restore(db, os.Args[3], os.Args[4])
 		} else {
 			help()
@@ -315,7 +329,7 @@ func main() {
 		apps(db)
 	case "dumpkeys":
 		var out string
-		if len(os.Args) > 3 {
+		if lenArgsVirt > 3 {
 			out = os.Args[3]
 		}
 		dumpkeys(db, out)
