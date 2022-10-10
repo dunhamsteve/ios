@@ -254,6 +254,7 @@ func (mb *MobileBackup) FileReader(rec Record) (io.ReadCloser, error) {
 		prev := make([]byte, 16)
 		n, rval.err = io.ReadFull(rval.r, prev)
 		if n != 16 {
+			rval.err = errors.New("short read of IV")
 			rval.ch <- nil
 			return
 		}
@@ -291,7 +292,7 @@ func (mb *MobileBackup) FileReader(rec Record) (io.ReadCloser, error) {
 		}
 	}()
 	rval.buf = <-rval.ch
-	return rval, nil
+	return rval, rval.err
 }
 
 // CBC+PKCS7 reader
