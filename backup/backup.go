@@ -17,6 +17,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"runtime"
 
 	"github.com/dunhamsteve/ios/crypto/aeswrap"
 	"github.com/dunhamsteve/ios/keybag"
@@ -355,8 +356,15 @@ type Backup struct {
 // Enumerate lists the available backups
 func Enumerate() ([]Backup, error) {
 	var all []Backup
-	home := os.Getenv("HOME")
-	dir := path.Join(home, "Library/Application Support/MobileSync/Backup")
+	var home string
+	var dir string
+	if runtime.GOOS == "windows" {
+		home = os.Getenv("APPDATA")
+		dir = path.Join(home, "Apple/MobileSync/Backup")
+	} else {
+		home = os.Getenv("HOME")
+		dir = path.Join(home, "Library/Application Support/MobileSync/Backup")
+	}
 	r, err := os.Open(dir)
 	if err != nil {
 		return nil, err
@@ -385,9 +393,15 @@ func Enumerate() ([]Backup, error) {
 // Open opens a MobileBackup directory corresponding to a given guid.
 func Open(guid string) (*MobileBackup, error) {
 	var backup MobileBackup
+	var home string
+	if runtime.GOOS == "windows" {
+		home = os.Getenv("APPDATA")
+		backup.Dir = path.Join(home, "Apple/MobileSync/Backup", guid)
+	} else {
+		home = os.Getenv("HOME")
+		backup.Dir = path.Join(home, "Library/Application Support/MobileSync/Backup", guid)
+	}
 
-	home := os.Getenv("HOME")
-	backup.Dir = path.Join(home, "Library/Application Support/MobileSync/Backup", guid)
 	tmp := path.Join(backup.Dir, "Manifest.plist")
 	r, err := os.Open(tmp)
 	if err != nil {
