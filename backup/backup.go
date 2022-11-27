@@ -435,7 +435,7 @@ func (mb *MobileBackup) decryptDatabase(fn string, mk []byte) (string, error) {
 	}
 	bm := cipher.NewCBCDecrypter(b, zeroiv)
 	bm.CryptBlocks(data, data)
-	out, err := ioutil.TempFile("/tmp", "db")
+	out, err := ioutil.TempFile("", "db")
 	if err != nil {
 		return "", err
 	}
