@@ -360,7 +360,7 @@ func Enumerate() ([]Backup, error) {
 	var dir string
 	if runtime.GOOS == "windows" {
 		home = os.Getenv("APPDATA")
-		dir = path.Join(home, "Apple/MobileSync/Backup")
+		dir = path.Join(home, "Apple Computer\\MobileSync\\Backup")
 	} else {
 		home = os.Getenv("HOME")
 		dir = path.Join(home, "Library/Application Support/MobileSync/Backup")
