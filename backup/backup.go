@@ -396,7 +396,7 @@ func Open(guid string) (*MobileBackup, error) {
 	var home string
 	if runtime.GOOS == "windows" {
 		home = os.Getenv("APPDATA")
-		backup.Dir = path.Join(home, "Apple/MobileSync/Backup", guid)
+		backup.Dir = path.Join(home, "Apple Computer\\MobileSync\\Backup", guid)
 	} else {
 		home = os.Getenv("HOME")
 		backup.Dir = path.Join(home, "Library/Application Support/MobileSync/Backup", guid)
