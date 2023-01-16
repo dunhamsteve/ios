@@ -18,10 +18,10 @@ The first argument is the device id or device name:
 # irestore MyPad
 Selected MyPad 43686f636f6c61746552616d656b696e73546f6f
 Usage:
-    ls [domain]
-    restore domain dest
-    dumpkeys [outputfile]
-    apps
+    ls [domain] .cred(optional)
+    restore domain dest .cred(optional)
+    dumpkeys [outputfile] .cred(optional)
+    apps .cred(optional)
 ```
 
 The `ls` command will list domains or files in a domain.
@@ -31,6 +31,8 @@ The `restore` command will restore the files in a domain into a directory tree.
 The `dumpkeys` command will dump the readable portions of the keychain to json.
 
 The `apps` command will list the installed apps.
+
+The `.cred` is an optional arguement that must be positioned at the end of the arguements list with a path to a file ending with or called `.cred`, and contains a string with no newline with the password to the database
 
 _Changes to the database format in recent iOS releases:_
 
