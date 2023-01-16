@@ -102,9 +102,9 @@ var marshalTests = []marshalTest{
 	{explicitTagTest{64}, "3005a503020140"},
 	{flagTest{true}, "30028000"},
 	{flagTest{false}, "3000"},
-	{time.Unix(0, 0).UTC(), "170d3730303130313030303030305a"},
-	{time.Unix(1258325776, 0).UTC(), "170d3039313131353232353631365a"},
-	{time.Unix(1258325776, 0).In(PST), "17113039313131353134353631362d30383030"},
+    {time.Unix(0, 0).UTC(), "180f31393730303130313030303030305a"},
+    {time.Unix(1258325776, 0).UTC(), "180f32303039313131353232353631365a"},
+    {time.Unix(1258325776, 0).In(PST), "181332303039313131353134353631362d30383030"},
 	{farFuture(), "180f32313030303430353132303130315a"},
 	{generalizedTimeTest{time.Unix(1258325776, 0).UTC()}, "3011180f32303039313131353232353631365a"},
 	{BitString{[]byte{0x80}, 1}, "03020780"},
@@ -112,14 +112,14 @@ var marshalTests = []marshalTest{
 	{ObjectIdentifier([]int{1, 2, 3, 4}), "06032a0304"},
 	{ObjectIdentifier([]int{1, 2, 840, 133549, 1, 1, 5}), "06092a864888932d010105"},
 	{ObjectIdentifier([]int{2, 100, 3}), "0603813403"},
-	{"test", "130474657374"},
+	{"test", "0c0474657374"},
 	{
 		"" +
 			"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" +
 			"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" +
 			"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" +
 			"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", // This is 127 times 'x'
-		"137f" +
+		"0c7f" +
 			"7878787878787878787878787878787878787878787878787878787878787878" +
 			"7878787878787878787878787878787878787878787878787878787878787878" +
 			"7878787878787878787878787878787878787878787878787878787878787878" +
@@ -131,7 +131,7 @@ var marshalTests = []marshalTest{
 			"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" +
 			"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" +
 			"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", // This is 128 times 'x'
-		"138180" +
+		"0c8180" +
 			"7878787878787878787878787878787878787878787878787878787878787878" +
 			"7878787878787878787878787878787878787878787878787878787878787878" +
 			"7878787878787878787878787878787878787878787878787878787878787878" +
@@ -139,14 +139,14 @@ var marshalTests = []marshalTest{
 	},
 	{ia5StringTest{"test"}, "3006160474657374"},
 	{optionalRawValueTest{}, "3000"},
-	{printableStringTest{"test"}, "3006130474657374"},
-	{printableStringTest{"test*"}, "30071305746573742a"},
+	{printableStringTest{"test"}, "30060c0474657374"},
+	{printableStringTest{"test*"}, "30070c05746573742a"},
 	{rawContentsStruct{nil, 64}, "3003020140"},
 	{rawContentsStruct{[]byte{0x30, 3, 1, 2, 3}, 64}, "3003010203"},
 	{RawValue{Tag: 1, Class: 2, IsCompound: false, Bytes: []byte{1, 2, 3}}, "8103010203"},
 	{testSET([]int{10}), "310302010a"},
 	{omitEmptyTest{[]string{}}, "3000"},
-	{omitEmptyTest{[]string{"1"}}, "30053003130131"},
+	{omitEmptyTest{[]string{"1"}}, "300530030c0131"},
 	{"Σ", "0c02cea3"},
 	{defaultTest{0}, "3003020100"},
 	{defaultTest{1}, "3000"},

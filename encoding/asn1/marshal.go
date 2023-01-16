@@ -370,6 +370,14 @@ func marshalTimeCommon(out *forkableWriter, t time.Time) (err error) {
 		return
 	}
 
+	if t.Nanosecond() > 0 {
+		out.WriteByte('.')
+		date := fmt.Sprintf("%s", t)
+		for _, digit := range date[20:len(date)-10] {
+			out.WriteByte(byte(digit))
+		}
+	}
+
 	_, offset := t.Zone()
 
 	switch {
@@ -414,11 +422,11 @@ func marshalBody(out *forkableWriter, value reflect.Value, params fieldParameter
 		return nil
 	case timeType:
 		t := value.Interface().(time.Time)
-		if params.timeType == TagGeneralizedTime || outsideUTCRange(t) {
+		// if params.timeType == TagGeneralizedTime || outsideUTCRange(t) {
 			return marshalGeneralizedTime(out, t)
-		} else {
-			return marshalUTCTime(out, t)
-		}
+		// } else {
+		// 	return marshalUTCTime(out, t)
+		// }
 	case bitStringType:
 		return marshalBitString(out, value.Interface().(BitString))
 	case objectIdentifierType:
@@ -584,9 +592,9 @@ func marshalField(out *forkableWriter, v reflect.Value, params fieldParameters) 
 			tag = params.stringType
 		}
 	case TagUTCTime:
-		if params.timeType == TagGeneralizedTime || outsideUTCRange(v.Interface().(time.Time)) {
+		// if params.timeType == TagGeneralizedTime || outsideUTCRange(v.Interface().(time.Time)) {
 			tag = TagGeneralizedTime
-		}
+		// }
 	}
 
 	if params.set {
@@ -614,6 +622,11 @@ func marshalField(out *forkableWriter, v reflect.Value, params fieldParameters) 
 		// implicit tag.
 		tag = *params.tag
 		class = ClassContextSpecific
+	}
+
+	// Replace TagPrintableString with TagUTF8String tags for idempotency
+	if (tag == 19) {
+		tag = 12
 	}
 
 	err = marshalTagAndLength(tags, tagAndLength{class, tag, bodyLen, isCompound})

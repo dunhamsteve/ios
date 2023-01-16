@@ -78,16 +78,17 @@ func (*gcm) Overhead() int {
 }
 
 func (g *gcm) Seal(dst, nonce, plaintext, data []byte) []byte {
-	if len(nonce) != gcmNonceSize {
-		panic("cipher: incorrect nonce length given to GCM")
-	}
-
 	ret, out := sliceForAppend(dst, len(plaintext)+gcmTagSize)
 
 	// See GCM spec, section 7.1.
 	var counter, tagMask [gcmBlockSize]byte
-	copy(counter[:], nonce)
-	counter[gcmBlockSize-1] = 1
+	if len(nonce) != gcmNonceSize {
+		// counter is all zeros for apple's blank iv
+		// The python code seems to do the hash inside g.auth for non-12 byte IVs
+	} else {
+		copy(counter[:], nonce)
+		counter[gcmBlockSize-1] = 1
+	}
 
 	g.cipher.Encrypt(tagMask[:], counter[:])
 	gcmInc32(&counter)
