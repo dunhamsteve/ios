@@ -1,0 +1,22 @@
+project_name: irestore
+builds:
+  - id: darwin-build
+    main: ./cmd/irestore
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+  - id: windows-build
+    main: ./cmd/irestore
+    ldflags: -buildmode=exe
+    env:
+      - CGO_ENABLED=1
+      - CC=x86_64-w64-mingw32-gcc
+      - CXX=x86_64-w64-mingw32-g++
+    goos:
+      - windows
+    goarch:
+      - amd64
+
+checksum:
+  name_template: 'checksums.txt'
