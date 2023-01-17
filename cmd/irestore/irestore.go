@@ -204,7 +204,8 @@ func restore(db *backup.MobileBackup, domain string, dest string) {
 		if rec.Length > 0 {
 			var outPath string
 			if domain == "*" {
-				outPath = path.Join(dest, rec.Domain, rec.Path)
+        domainPath := strings.Replace(rec.Domain, "-", "/", -1)
+				outPath = path.Join(dest, domainPath, rec.Path)
 			} else if rec.Domain == domain {
 				outPath = path.Join(dest, rec.Path)
 			}
