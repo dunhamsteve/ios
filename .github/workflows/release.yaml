@@ -11,6 +11,11 @@ jobs:
       - uses: actions/checkout@v3
       - run: git fetch --force --tags
       - run: brew install mingw-w64
+      - working-directory: /tmp
+        run: |
+          wget https://github.com/mstorsjo/llvm-mingw/releases/download/20230427/llvm-mingw-20230427-ucrt-macos-universal.tar.xz
+          gunzip llvm-mingw-20230427-ucrt-macos-universal.tar.xz
+          tar xf llvm-mingw-20230427-ucrt-macos-universal.tar
       - uses: actions/setup-go@v3
         with:
           go-version: '>=1.19.1'

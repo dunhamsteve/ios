@@ -6,7 +6,7 @@ builds:
       - CGO_ENABLED=1
     goos:
       - darwin
-  - id: windows-build
+  - id: windows-build-amd64
     main: ./cmd/irestore
     ldflags: -buildmode=exe
     env:
@@ -17,6 +17,28 @@ builds:
       - windows
     goarch:
       - amd64
+  - id: windows-build-arm64
+    main: ./cmd/irestore
+    ldflags: -buildmode=exe
+    env:
+      - CGO_ENABLED=1
+      - CC=/tmp/llvm-mingw-20230427-ucrt-macos-universal/bin/aarch64-w64-mingw32-gcc
+      - CXX=/tmp/llvm-mingw-20230427-ucrt-macos-universal/bin/aarch64-w64-mingw32-g++
+    goos:
+      - windows
+    goarch:
+      - arm64
+  - id: windows-build-386
+    main: ./cmd/irestore
+    ldflags: -buildmode=exe
+    env:
+      - CGO_ENABLED=1
+      - CC=i686-w64-mingw32-gcc
+      - CXX=i686-w64-mingw32-g++
+    goos:
+      - windows
+    goarch:
+      - 386
 
 checksum:
   name_template: 'checksums.txt'
