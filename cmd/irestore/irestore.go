@@ -227,6 +227,11 @@ func restore(db *backup.MobileBackup, domain string, dest string) {
 				total += n
 				r.Close()
 				w.Close()
+				err = os.Chtimes(outPath, time.Unix(int64(rec.Atime), 0), time.Unix(int64(rec.Mtime), 0))
+				if err != nil {
+					log.Println("error setting the last modification times for file", rec, err)
+					// this is a non-fatal error, so no need to `continue`
+				}
 			}
 		}
 	}
